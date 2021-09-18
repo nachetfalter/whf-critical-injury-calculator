@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { dictionary } from './config';
+import useStateRef from 'react-usestateref';
 import './App.css';
 import { Select, Input, Modal } from 'antd';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faDiceD20, faUserInjured } from '@fortawesome/free-solid-svg-icons'
 const { Option } = Select;
-const { dictionary } = require('./config');
 
 const App = () => {
-  const [target, setTarget]  = useState('Target');
+  const [target, setTarget, targetRef]  = useStateRef('Target');
   const [rollResult, setRollResult]  = useState('Random');
   const [damageResistance, setDamageResistance]  = useState(null);
   const [damage, setDamage]  = useState(null);
   const [injuryRoll, setInjuryRoll]  = useState(null);
-  const [currentInjury, setCurrentInjury]  = useState(null);
-  const [additionalInjury, setAdditionalInjury]  = useState(null);
+  const [currentInjury, setCurrentInjury, currentInjuryRef]  = useStateRef(null);
+  const [additionalInjury, setAdditionalInjury, additionalInjuryRef]  = useStateRef(null);
   const [showInjuryModal, setShowInjuryModal]  = useState(false);
 
   function onSetTarget (value) {
@@ -23,20 +24,23 @@ const App = () => {
   function onRollingTarget () {
     const roll = Math.floor(Math.random() * 100) + 1;
 
+    let targetPosition;
     if (roll < 10) {
-      setTarget("Head");
+      targetPosition = "Head";
     } else if (roll < 25) {
-      setTarget("Left Arm");
+      targetPosition = "Left Arm";
     } else if (roll < 45) {
-      setTarget("Right Arm");
+      targetPosition = "Right Arm";
     } else if (roll < 80) {
-      setTarget("Body");
+      targetPosition = "Body";
     } else if (roll < 90) {
-      setTarget("Left Leg");
+      targetPosition = "Left Leg";
     } else {
-      setTarget("Right Leg");
+      targetPosition = "Right Leg";
     }
+    setTarget(targetPosition);
     setRollResult(`You rolled: ${roll}`);
+    return targetPosition;
   }
 
   function onChangeDamageResistance (value) {
@@ -57,6 +61,10 @@ const App = () => {
     }
   }
 
+  function onCloseInjuryModal () {
+    setShowInjuryModal(false);
+  }
+
   function onCalculatingInjury () {
     // Calculate injury roll
     const receivedDamage =
@@ -69,24 +77,21 @@ const App = () => {
     randomInjuryRoll = randomInjuryRoll > 100 ? 100 : randomInjuryRoll;
     setAdditionalInjury(null);
 
+    let injuryLocation = targetRef.current;
+
     // If no target has been set, randomly roll one
-    if (target.includes("Target")) {
-      onRollingTarget();
+    if (targetRef.current.includes("Target")) {
+      injuryLocation = onRollingTarget();
     }
 
     // Normalise injury location
-    let injuryLocation;
-    if (target.includes("Arm")) {
+    if (injuryLocation?.includes("Arm")) {
       injuryLocation = "arm";
-    } else if (target.includes("Leg")) {
+    } else if (targetRef.current.includes("Leg")) {
       injuryLocation = "leg";
     } else {
-      injuryLocation = target.toLowerCase();
+      injuryLocation = injuryLocation.toLowerCase();
     }
-    console.log(injuryLocation);
-
-
-
 
     // Retrieve additional injury effects
     for (const threshold of dictionary.injuryThresholds) {
@@ -94,12 +99,10 @@ const App = () => {
       const upperLimit = parseInt(threshold.split("-")[1]);
       if (randomInjuryRoll >= lowerLimit && randomInjuryRoll <= upperLimit) {
         const index = dictionary.injuryThresholds.indexOf(threshold);
-        console.log(dictionary.injuryTable[injuryLocation][index]);
         setCurrentInjury(dictionary.injuryTable[injuryLocation][index]);
 
-        console.log(currentInjury);
         // Retrieve additional injury information
-        const injuryDescription = currentInjury.description.toLowerCase();
+        const injuryDescription = currentInjuryRef.current.description.toLowerCase();
         if (injuryDescription.includes("broken bone")) {
           if (injuryDescription.includes("major")) {
             setAdditionalInjury(dictionary.additionalInjuryTable["broken bone"]);
@@ -126,7 +129,7 @@ const App = () => {
           for (const amputation of dictionary.possiblePositionAmputations[
             injuryLocation
           ]) {
-            setAdditionalInjury({...additionalInjury, [amputation]: dictionary.additionalInjuryTable[
+            setAdditionalInjury({...additionalInjuryRef.current, [amputation]: dictionary.additionalInjuryTable[
               "amputation"
             ][amputation]})
           }
@@ -146,10 +149,10 @@ const App = () => {
       </header>
 
       <div className="m-auto">
-        <div id="app">
+        <div>
           <div className="flex">
             <h1 className="text-white m-auto my-4 text-2xl">
-              Critical Assistance Tool
+              WHF Critical Injury Generator
             </h1>
           </div>
 
@@ -189,7 +192,8 @@ const App = () => {
           }
         </div>
       </div>
-      <Modal visible={ showInjuryModal } body-style="width:100%;max-height:80vh;overflow-y:auto" title="Injury Detail" footer="null">
+
+      <Modal visible={ showInjuryModal } body-style="width:100%;max-height:80vh;overflow-y:auto" title="Injury Detail" footer={ null } onCancel={ onCloseInjuryModal }>
         <div className="text-black row">
           <strong className="mr-1">Roll:</strong>
           <strong>{ injuryRoll }</strong>
@@ -212,18 +216,24 @@ const App = () => {
                 <strong>Additional Injury</strong>
               </div>
               {
-                dictionary.additionalInjury.map((injury, injuryIndex) => {
+                Object.keys(additionalInjury).map((injuryIndex, _) => {
                   return <div key={injuryIndex} className="text-black p-1 mb-1 rounded border-black-400 border-4">
                     <div>
                       <div><strong>{ injuryIndex.toUpperCase() }</strong></div>
                       <div><strong className="text-sm mb-1">Effect</strong></div>
-                      <div className="text-sm mb-1">{ injury.description }</div>
-                      injury.heal
-                      ?
-                        <div className="mb-1"><strong>Healing</strong></div>
-                        <div className="text-sm">{ injury.heal }</div>
-                      :
-                        null
+                      <div className="text-sm mb-1">{ additionalInjury[injuryIndex].description }</div>
+                        {
+                        additionalInjury[injuryIndex].heal
+                          ?
+                            (
+                              <div>
+                                <div className="mb-1"><strong>Healing</strong></div>
+                                <div className="text-sm">{ additionalInjury[injuryIndex].heal }</div>
+                              </div>
+                            )
+                          :
+                            null
+                        }
                     </div>
                   </div>
                 })
